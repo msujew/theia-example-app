@@ -5,7 +5,7 @@ import { bindViewContribution, WidgetFactory } from '@theia/core/lib/browser';
 import { MyExtensionCommandContribution, MyExtensionViewContribution } from './my-extension-contribution';
 import { CommandContribution } from '@theia/core/lib/common';
 import { ContainerModule } from '@theia/core/shared/inversify';
-import { MyExtensionWidget } from './my-extension-widget';
+import { MyExtensionWidget, TaskInfoService, TaskInfoWidget } from './my-extension-widget';
 
 export default new ContainerModule(bind => {
     // add your contribution bindings here
@@ -16,4 +16,10 @@ export default new ContainerModule(bind => {
         id: MyExtensionWidget.ID,
         createWidget: () => ctx.container.get<MyExtensionWidget>(MyExtensionWidget)
     })).inSingletonScope();
+    bind(TaskInfoWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(ctx => ({
+        id: TaskInfoWidget.ID,
+        createWidget: () => ctx.container.get<TaskInfoWidget>(TaskInfoWidget)
+    })).inSingletonScope();
+    bind(TaskInfoService).toSelf().inSingletonScope();
 });
