@@ -3,24 +3,38 @@ import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
 import { ApplicationShell, ExtractableWidget, WidgetManager } from "@theia/core/lib/browser";
 import { Emitter, Event } from "@theia/core";
-
-const TASKS: Task[] = [
-    { taskName: 'Title Transfer', assigned: 'Alice' },
-    { taskName: 'Release Charge' },
-    { taskName: 'Transfer Title', assigned: 'Bob' },
-    { taskName: 'Write Unit Tests' }
-];
+import { Task, TaskStorage } from "../common/task-storage";
 
 @injectable()
 export class TaskInfoService {
 
-    private newTaskEventEmitter = new Emitter<void>();
-    get onNewTask(): Event<void> {
-        return this.newTaskEventEmitter.event;
+    private taskListUpdatedEmitter = new Emitter<void>();
+    get onTaskListUpdated(): Event<void> {
+        return this.taskListUpdatedEmitter.event;
     }
 
-    fireNewTask(): void {
-        this.newTaskEventEmitter.fire();
+    private tasks: Task[] = [];
+
+    @inject(TaskStorage)
+    protected readonly taskStorage!: TaskStorage;
+
+    @postConstruct()
+    protected init(): void {
+        this.loadTasks();
+    }
+
+    private async loadTasks(): Promise<void> {
+        this.tasks = await this.taskStorage.getTasks();
+        this.taskListUpdatedEmitter.fire();
+    }
+
+    getTasks(): Task[] {
+        return this.tasks;
+    }
+
+    async addTask(task: Task): Promise<void> {
+        await this.taskStorage.addTask(task);
+        await this.loadTasks();
     }
 
 }
@@ -43,23 +57,20 @@ export class MyExtensionWidget extends ReactWidget implements ExtractableWidget 
     @inject(TaskInfoService)
     protected readonly taskInfoService!: TaskInfoService;
 
+    @inject(TaskStorage)
+    protected readonly taskStorage!: TaskStorage;
+
     @postConstruct()
     protected init(): void {
         this.id = MyExtensionWidget.ID;
         this.title.label = MyExtensionWidget.LABEL;
         this.title.closable = true;
         this.update();
-        this.toDispose.push(
-            this.taskInfoService.onNewTask(() => {
-                TASKS.push({ taskName: 'New Task' });
-                console.log('New task added');
-                this.update();
-            })
-        );
+        this.taskInfoService.onTaskListUpdated(() => this.update());
     }
 
     protected render(): React.ReactNode {
-        return <TaskListComponent tasks={TASKS} onEdit={() => this.createTaskInfoWidget()} />;
+        return <TaskListComponent tasks={this.taskInfoService.getTasks()} onEdit={() => this.createTaskInfoWidget()} />;
     }
 
     private async createTaskInfoWidget(): Promise<void> {
@@ -92,7 +103,10 @@ export class TaskInfoWidget extends ReactWidget {
 
     protected render(): React.ReactNode {
         return <div>Task Info Details
-            <button onClick={() => this.taskInfoService.fireNewTask()}>Add New</button>
+            <button onClick={() => {
+                const task = { taskName: 'New Task' };
+                this.taskInfoService.addTask(task);
+            }}>Add New</button>
         </div>;
     }
 }
@@ -102,14 +116,11 @@ interface TaskListProps {
     onEdit: () => void;
 }
 
-interface Task {
-    taskName: string;
-    assigned?: string;
-}
+
 
 function TaskListComponent(props: TaskListProps): React.ReactElement {
     return (
-        <table>
+        <table className="taskList">
             <thead>
                 <tr>
                     <th>Task Name</th>
