@@ -1,8 +1,8 @@
 import * as React from "react";
 import { ReactWidget } from "@theia/core/lib/browser/widgets/react-widget";
 import { inject, injectable, postConstruct } from "@theia/core/shared/inversify";
-import { ApplicationShell, ExtractableWidget, WidgetManager } from "@theia/core/lib/browser";
-import { Emitter, Event } from "@theia/core";
+import { ApplicationShell, ExtractableWidget, Widget, WidgetManager } from "@theia/core/lib/browser";
+import { Emitter, Event, generateUuid } from "@theia/core";
 import { Task, TaskStorage } from "../common/task-storage";
 
 @injectable()
@@ -70,20 +70,25 @@ export class MyExtensionWidget extends ReactWidget implements ExtractableWidget 
     }
 
     protected render(): React.ReactNode {
-        return <TaskListComponent tasks={this.taskInfoService.getTasks()} onEdit={() => this.createTaskInfoWidget()} />;
+        return <TaskListComponent tasks={this.taskInfoService.getTasks()} onEdit={(task) => this.createTaskInfoWidget(task)} />;
     }
 
-    private async createTaskInfoWidget(): Promise<void> {
-        const widget = await this.widgetManager.getOrCreateWidget<TaskInfoWidget>(TaskInfoWidget.ID);
+    private async createTaskInfoWidget(task: Task): Promise<void> {
+        const widget = await this.widgetManager.getOrCreateWidget<TaskInfoWidget>(TaskInfoWidget.ID, task);
+        const existingWidgets = this.shell.widgets;
+        this.shell.closeMany(existingWidgets as Widget[]);
         await this.shell.addWidget(widget, {
-            ref: this,
-            mode: 'open-to-right'
+            area: 'main'
         });
     }
 
 }
 
+export const TaskInfoProps = Symbol('TaskInfoProps');
 
+export interface TaskInfoProps {
+    task: Task;
+}
 
 @injectable()
 export class TaskInfoWidget extends ReactWidget {
@@ -92,6 +97,9 @@ export class TaskInfoWidget extends ReactWidget {
 
     @inject(TaskInfoService)
     protected readonly taskInfoService!: TaskInfoService;
+
+    @inject(TaskInfoProps)
+    protected readonly props!: TaskInfoProps;
 
     @postConstruct()
     protected init(): void {
@@ -102,9 +110,9 @@ export class TaskInfoWidget extends ReactWidget {
     }
 
     protected render(): React.ReactNode {
-        return <div>Task Info Details
+        return <div>Task Info: {this.props.task.taskName}
             <button onClick={() => {
-                const task = { taskName: 'New Task' };
+                const task = { taskName: 'New Task', id: generateUuid() };
                 this.taskInfoService.addTask(task);
             }}>Add New</button>
         </div>;
@@ -113,7 +121,7 @@ export class TaskInfoWidget extends ReactWidget {
 
 interface TaskListProps {
     tasks: Task[];
-    onEdit: () => void;
+    onEdit: (task: Task) => void;
 }
 
 
@@ -138,12 +146,12 @@ function TaskListComponent(props: TaskListProps): React.ReactElement {
     )
 }
 
-function TaskComponent({ task, onEdit }: { task: Task; onEdit: () => void }): React.ReactElement {
+function TaskComponent({ task, onEdit }: { task: Task; onEdit: (task: Task) => void }): React.ReactElement {
     const [assigned, setAssigned] = React.useState(task.assigned);
     return <tr>
         <td>{task.taskName}</td>
         <td>{assigned ?? <TaskAssignButton onAssign={() => { setAssigned('Mark') }} />}</td>
-        <td><button onClick={onEdit}>Edit</button></td>
+        <td><button onClick={() => onEdit(task)}>Edit</button></td>
     </tr>
 }
 
